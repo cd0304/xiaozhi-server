@@ -189,19 +189,25 @@ async def process_intent_result(conn, intent_result, original_text):
 
 
 def speak_txt(conn, text):
-    conn.tts.tts_text_queue.put(
-        TTSMessageDTO(
-            sentence_id=conn.sentence_id,
-            sentence_type=SentenceType.FIRST,
-            content_type=ContentType.ACTION,
+    # 检查TTS开关，只有启用时才执行TTS处理
+    if conn.enable_tts:
+        conn.tts.tts_text_queue.put(
+            TTSMessageDTO(
+                sentence_id=conn.sentence_id,
+                sentence_type=SentenceType.FIRST,
+                content_type=ContentType.ACTION,
+            )
         )
-    )
-    conn.tts.tts_one_sentence(conn, ContentType.TEXT, content_detail=text)
-    conn.tts.tts_text_queue.put(
-        TTSMessageDTO(
-            sentence_id=conn.sentence_id,
-            sentence_type=SentenceType.LAST,
-            content_type=ContentType.ACTION,
+        conn.tts.tts_one_sentence(conn, ContentType.TEXT, content_detail=text)
+        conn.tts.tts_text_queue.put(
+            TTSMessageDTO(
+                sentence_id=conn.sentence_id,
+                sentence_type=SentenceType.LAST,
+                content_type=ContentType.ACTION,
+            )
         )
-    )
     conn.dialogue.put(Message(role="assistant", content=text))
+    
+    # 如果TTS关闭，直接发送文本响应
+    if not conn.enable_tts:
+        conn._send_text_response(text)

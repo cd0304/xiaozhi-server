@@ -56,6 +56,12 @@
         #fileProtocolWarning button:hover {
             background-color: #45a049;
         }
+
+        .config-hint {
+            font-size: 12px;
+            color: #666;
+            margin-left: 8px;
+        }
     </style>
     <script>
         // 检测是否使用file://协议打开
@@ -117,6 +123,11 @@
                     <div class="config-item">
                         <label for="token">认证Token:</label>
                         <input type="text" id="token" value="your-token1" placeholder="认证Token">
+                    </div>
+                    <div class="config-item">
+                        <label for="enableTts">启用TTS:</label>
+                        <input type="checkbox" id="enableTts" checked>
+                        <span class="config-hint">关闭时只返回文本，不生成语音</span>
                     </div>
                 </div>
             </div>
@@ -728,6 +739,10 @@
                     connectionStatus.textContent = 'ws已连接';
                     connectionStatus.style.color = 'green';
 
+                    // 显示TTS开关状态
+                    const config = getConfig();
+                    log(`TTS开关状态: ${config.enableTts ? '启用' : '禁用'}`, 'info');
+
                     // 连接成功后发送hello消息
                     await sendHelloMessage();
 
@@ -879,7 +894,20 @@
                                         log(`回复MCP消息: ${replay_message}`, 'info');
                                     }
                                 }
-
+                            } else if (message.type === 'text_response') {
+                                // 处理纯文本响应（TTS关闭时的文本回复）
+                                log(`收到文本响应: ${message.content}`, 'info');
+                                log('注意：服务器TTS已关闭，只返回文本不生成语音', 'warning');
+                                // 添加文本响应到会话记录
+                                if (message.content) {
+                                    addMessage(message.content);
+                                }
+                                // 更新UI状态，表示可以继续录音
+                                if (recordButton.disabled) {
+                                    recordButton.disabled = false;
+                                    recordButton.textContent = '开始录音';
+                                    recordButton.classList.remove('recording');
+                                }
                             } else {
                                 // 未知消息类型
                                 log(`未知消息类型: ${message.type}`, 'info');
@@ -1671,7 +1699,8 @@
                 deviceName: document.getElementById('deviceName').value.trim(),
                 deviceMac: deviceMac,
                 clientId: document.getElementById('clientId').value.trim(),
-                token: document.getElementById('token').value.trim()
+                token: document.getElementById('token').value.trim(),
+                enableTts: document.getElementById('enableTts').checked
             };
         }
 

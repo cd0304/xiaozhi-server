@@ -145,7 +145,10 @@ class ConnectionHandler:
         self.close_after_chat = False
         self.load_function_plugin = False
         self.intent_type = "nointent"
-
+        
+        # TTS开关控制
+        self.enable_tts = self.config.get("enable_tts", True)
+        self.logger.bind(tag=TAG).info(f"TTS开关状态: {self.enable_tts}")
         self.timeout_seconds = (
             int(self.config.get("close_connection_no_voice_time", 120)) + 60
         )  # 在原来第一道关闭的基础上加60秒，进行二道关闭
@@ -751,13 +754,15 @@ class ConnectionHandler:
         if depth == 0:
             self.sentence_id = str(uuid.uuid4().hex)
             self.dialogue.put(Message(role="user", content=query))
-            self.tts.tts_text_queue.put(
-                TTSMessageDTO(
-                    sentence_id=self.sentence_id,
-                    sentence_type=SentenceType.FIRST,
-                    content_type=ContentType.ACTION,
+            # 检查TTS开关，只有启用时才发送会话开始信号
+            if self.enable_tts:
+                self.tts.tts_text_queue.put(
+                    TTSMessageDTO(
+                        sentence_id=self.sentence_id,
+                        sentence_type=SentenceType.FIRST,
+                        content_type=ContentType.ACTION,
+                    )
                 )
-            )
 
         # Define intent functions
         functions = None
@@ -839,14 +844,16 @@ class ConnectionHandler:
             if content is not None and len(content) > 0:
                 if not tool_call_flag:
                     response_message.append(content)
-                    self.tts.tts_text_queue.put(
-                        TTSMessageDTO(
-                            sentence_id=self.sentence_id,
-                            sentence_type=SentenceType.MIDDLE,
-                            content_type=ContentType.TEXT,
-                            content_detail=content,
+                    # 检查TTS开关，只有启用时才加入TTS队列
+                    if self.enable_tts:
+                        self.tts.tts_text_queue.put(
+                            TTSMessageDTO(
+                                sentence_id=self.sentence_id,
+                                sentence_type=SentenceType.MIDDLE,
+                                content_type=ContentType.TEXT,
+                                content_detail=content,
+                            )
                         )
-                    )
         # 处理function call
         if tool_call_flag:
             bHasError = False
@@ -900,14 +907,20 @@ class ConnectionHandler:
             text_buff = "".join(response_message)
             self.tts_MessageText = text_buff
             self.dialogue.put(Message(role="assistant", content=text_buff))
+            
+            # 如果TTS关闭，直接发送文本消息给设备
+            if not self.enable_tts and depth == 0:
+                self._send_text_response(text_buff)
         if depth == 0:
-            self.tts.tts_text_queue.put(
-                TTSMessageDTO(
-                    sentence_id=self.sentence_id,
-                    sentence_type=SentenceType.LAST,
-                    content_type=ContentType.ACTION,
+            # 检查TTS开关，只有启用时才发送会话结束信号
+            if self.enable_tts:
+                self.tts.tts_text_queue.put(
+                    TTSMessageDTO(
+                        sentence_id=self.sentence_id,
+                        sentence_type=SentenceType.LAST,
+                        content_type=ContentType.ACTION,
+                    )
                 )
-            )
         self.llm_finish_task = True
         # 使用lambda延迟计算，只有在DEBUG级别时才执行get_llm_dialogue()
         self.logger.bind(tag=TAG).debug(
@@ -918,11 +931,35 @@ class ConnectionHandler:
 
         return True
 
+    def _send_text_response(self, text):
+        """当TTS关闭时，直接发送文本响应给设备"""
+        try:
+            import json
+            message = {
+                "type": "text_response",
+                "content": text,
+                "session_id": self.sentence_id
+            }
+            # 异步发送文本消息
+            asyncio.run_coroutine_threadsafe(
+                self.websocket.send(json.dumps(message, ensure_ascii=False)),
+                self.loop
+            )
+            self.logger.bind(tag=TAG).info(f"发送文本响应: {text}")
+        except Exception as e:
+            self.logger.bind(tag=TAG).error(f"发送文本响应失败: {e}")
+
     def _handle_function_result(self, result, function_call_data, depth):
         if result.action == Action.RESPONSE:  # 直接回复前端
             text = result.response
-            self.tts.tts_one_sentence(self, ContentType.TEXT, content_detail=text)
+            # 检查TTS开关，只有启用时才执行TTS
+            if self.enable_tts:
+                self.tts.tts_one_sentence(self, ContentType.TEXT, content_detail=text)
             self.dialogue.put(Message(role="assistant", content=text))
+            
+            # 如果TTS关闭，直接发送文本响应
+            if not self.enable_tts:
+                self._send_text_response(text)
         elif result.action == Action.REQLLM:  # 调用函数后再请求llm生成回复
             text = result.result
             if text is not None and len(text) > 0:
@@ -962,8 +999,14 @@ class ConnectionHandler:
                 self.chat(text, depth=depth + 1)
         elif result.action == Action.NOTFOUND or result.action == Action.ERROR:
             text = result.response if result.response else result.result
-            self.tts.tts_one_sentence(self, ContentType.TEXT, content_detail=text)
+            # 检查TTS开关，只有启用时才执行TTS
+            if self.enable_tts:
+                self.tts.tts_one_sentence(self, ContentType.TEXT, content_detail=text)
             self.dialogue.put(Message(role="assistant", content=text))
+            
+            # 如果TTS关闭，直接发送文本响应
+            if not self.enable_tts:
+                self._send_text_response(text)
         else:
             pass
 

@@ -8,7 +8,9 @@ manager-api 该项目基于SpringBoot框架开发。
 
 # 开发环境
 JDK 21
+    https://www.oracle.com/cn/java/technologies/downloads/#jdk21-windows
 Maven 3.8+
+    https://maven.apache.org/download.cgi
 MySQL 8.0+
 Redis 5.0+
 Vue 3.x
@@ -16,3 +18,6 @@ Vue 3.x
 # 接口文档
 启动后打开：http://localhost:8002/xiaozhi/doc.html
 
+
+安装好java和配置好maven路径到环境变量的path后
+进入这个manager-api目录,执行  mvn spring-boot:run 启动项目
