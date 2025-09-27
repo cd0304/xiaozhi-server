@@ -18,6 +18,6 @@ Vue 3.x
 # 接口文档
 启动后打开：http://localhost:8002/xiaozhi/doc.html
 
-
+启动方式：
 安装好java和配置好maven路径到环境变量的path后
 进入这个manager-api目录,执行  mvn spring-boot:run 启动项目
