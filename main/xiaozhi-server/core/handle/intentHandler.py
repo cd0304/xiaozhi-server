@@ -206,8 +206,8 @@ def speak_txt(conn, text):
                 content_type=ContentType.ACTION,
             )
         )
-    conn.dialogue.put(Message(role="assistant", content=text))
-    
-    # 如果TTS关闭，直接发送文本响应
-    if not conn.enable_tts:
+    else:
+        # 如果TTS关闭，发送模拟的TTS协议流程
         conn._send_text_response(text)
+    
+    conn.dialogue.put(Message(role="assistant", content=text))

@@ -932,22 +932,63 @@ class ConnectionHandler:
         return True
 
     def _send_text_response(self, text):
-        """当TTS关闭时，直接发送文本响应给设备"""
+        """当TTS关闭时，发送模拟的TTS协议流程"""
+        try:
+            # 使用异步方式发送模拟TTS协议
+            asyncio.run_coroutine_threadsafe(
+                self._send_mock_tts_protocol(text), self.loop
+            )
+            self.logger.bind(tag=TAG).info(f"启动模拟TTS协议流程: {text}")
+        except Exception as e:
+            self.logger.bind(tag=TAG).error(f"启动模拟TTS协议失败: {e}")
+    
+    async def _send_mock_tts_protocol(self, text):
+        """异步发送模拟的TTS协议流程"""
         try:
             import json
-            message = {
-                "type": "text_response",
-                "content": text,
+            
+            # 发送TTS开始信号
+            start_message = {
+                "type": "tts",
+                "state": "start",
                 "session_id": self.sentence_id
             }
-            # 异步发送文本消息
-            asyncio.run_coroutine_threadsafe(
-                self.websocket.send(json.dumps(message, ensure_ascii=False)),
-                self.loop
-            )
-            self.logger.bind(tag=TAG).info(f"发送文本响应: {text}")
+            await self.websocket.send(json.dumps(start_message, ensure_ascii=False))
+            
+            # 发送句子开始信号
+            sentence_start_message = {
+                "type": "tts", 
+                "state": "sentence_start",
+                "text": text,
+                "session_id": self.sentence_id
+            }
+            await self.websocket.send(json.dumps(sentence_start_message, ensure_ascii=False))
+            
+            # 根据文本长度动态调整延迟时间，模拟TTS处理时间
+            # 每10个字符约0.1秒，最少0.1秒，最多0.5秒
+            delay_time = min(max(len(text) * 0.01, 0.1), 0.5)
+            await asyncio.sleep(delay_time)
+            
+            # 发送句子结束信号
+            sentence_end_message = {
+                "type": "tts",
+                "state": "sentence_end", 
+                "text": text,
+                "session_id": self.sentence_id
+            }
+            await self.websocket.send(json.dumps(sentence_end_message, ensure_ascii=False))
+            
+            # 发送TTS结束信号
+            stop_message = {
+                "type": "tts",
+                "state": "stop",
+                "session_id": self.sentence_id
+            }
+            await self.websocket.send(json.dumps(stop_message, ensure_ascii=False))
+            
+            self.logger.bind(tag=TAG).info(f"完成模拟TTS协议流程: {text}")
         except Exception as e:
-            self.logger.bind(tag=TAG).error(f"发送文本响应失败: {e}")
+            self.logger.bind(tag=TAG).error(f"模拟TTS协议发送失败: {e}")
 
     def _handle_function_result(self, result, function_call_data, depth):
         if result.action == Action.RESPONSE:  # 直接回复前端
