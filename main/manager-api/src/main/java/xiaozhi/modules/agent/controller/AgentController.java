@@ -27,6 +27,7 @@ import io.swagger.v3.oas.annotations.Parameters;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import xiaozhi.common.constant.Constant;
 import xiaozhi.common.page.PageData;
 import xiaozhi.common.redis.RedisKeys;
@@ -53,6 +54,7 @@ import xiaozhi.modules.device.entity.DeviceEntity;
 import xiaozhi.modules.device.service.DeviceService;
 import xiaozhi.modules.security.user.SecurityUser;
 
+@Slf4j
 @Tag(name = "智能体管理")
 @AllArgsConstructor
 @RestController
@@ -121,6 +123,7 @@ public class AgentController {
     @Operation(summary = "更新智能体")
     @RequiresPermissions("sys:role:normal")
     public Result<Void> update(@PathVariable String id, @RequestBody @Valid AgentUpdateDTO dto) {
+        log.info("接收到智能体更新请求 - AgentId: {}, EnableTts: {}", id, dto.getEnableTts());
         agentService.updateAgentById(id, dto);
         return new Result<>();
     }

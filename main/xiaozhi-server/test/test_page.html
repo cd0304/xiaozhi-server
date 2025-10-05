@@ -167,6 +167,7 @@
             <div class="tab-content" id="voiceTab">
                 <div class="audio-controls">
                     <button id="recordButton" class="record-button" disabled>开始录音</button>
+                    <button id="queryTtsStatusButton" onclick="queryTtsStatus()">查询TTS状态</button>
                 </div>
                 <canvas id="audioVisualizer" class="audio-visualizer"></canvas>
             </div>
@@ -823,6 +824,15 @@
                                 // 添加大模型回复到会话记录
                                 if (message.text && message.text !== '😊') {
                                     addMessage(message.text);
+                                }
+                            } else if (message.type === 'tts_status') {
+                                // 处理TTS状态查询响应
+                                log(`TTS状态查询响应: ${JSON.stringify(message)}`, 'info');
+                                if (message.status === 'success') {
+                                    const data = message.data;
+                                    log(`设备TTS状态 - 设备ID: ${data.device_id}, 启用状态: ${data.enable_tts}, 配置来源: ${data.config_source}`, 'success');
+                                } else {
+                                    log(`TTS状态查询失败: ${message.message}`, 'error');
                                 }
                             } else if (message.type === 'mcp') {
                                 const payload = message.payload || {};
@@ -1688,6 +1698,21 @@
                 token: document.getElementById('token').value.trim(),
                 enableTts: document.getElementById('enableTts').checked
             };
+        }
+
+        // 查询TTS状态
+        function queryTtsStatus() {
+            if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+                log('WebSocket未连接，无法查询TTS状态', 'error');
+                return;
+            }
+            
+            const message = JSON.stringify({
+                type: 'tts_status'
+            });
+            
+            websocket.send(message);
+            log('发送TTS状态查询请求', 'info');
         }
 
         initApp();

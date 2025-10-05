@@ -40,6 +40,9 @@ public class AgentDTO {
             "根据对话记录，总结user的重要信息，以便在未来的对话中提供更个性化的服务", required = false)
     private String summaryMemory;
 
+    @Schema(description = "是否启用TTS语音合成（true启用，false禁用，null使用全局配置）", example = "true", required = false)
+    private Boolean enableTts;
+
     @Schema(description = "最后连接时间", example = "2024-03-20 10:00:00")
     private Date lastConnectedAt;
 

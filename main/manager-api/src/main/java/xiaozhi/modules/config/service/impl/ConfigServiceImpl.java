@@ -172,6 +172,11 @@ public class ConfigServiceImpl implements ConfigService {
         // 获取声纹信息
         buildVoiceprintConfig(agent.getId(), result);
 
+        // 添加TTS开关配置
+        if (agent.getEnableTts() != null) {
+            result.put("enable_tts", agent.getEnableTts());
+        }
+
         // 构建模块配置
         buildModuleConfig(
                 agent.getAgentName(),

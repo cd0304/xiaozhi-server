@@ -70,6 +70,9 @@ public class AgentEntity {
     @Schema(description = "排序")
     private Integer sort;
 
+    @Schema(description = "是否启用TTS语音合成（true启用，false禁用，null使用全局配置）")
+    private Boolean enableTts;
+
     @Schema(description = "创建者")
     private Long creator;
 

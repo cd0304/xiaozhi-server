@@ -129,6 +129,14 @@
                           :value="item.value" />
                       </el-select>
                     </el-form-item>
+                    <el-form-item :label="$t('roleConfig.enableTts')">
+                      <el-radio-group v-model="form.enableTts">
+                        <el-radio :label="'global'">{{ $t('roleConfig.useGlobalConfig') }}</el-radio>
+                        <el-radio :label="true">{{ $t('roleConfig.enableTtsOn') }}</el-radio>
+                        <el-radio :label="false">{{ $t('roleConfig.enableTtsOff') }}</el-radio>
+                      </el-radio-group>
+                      <div class="config-hint">{{ $t('roleConfig.enableTtsHint') }}</div>
+                    </el-form-item>
                   </div>
                 </div>
               </div>
@@ -163,6 +171,7 @@ export default {
         langCode: "",
         language: "",
         sort: "",
+        enableTts: 'global',
         model: {
           ttsModelId: "",
           vadModelId: "",
@@ -219,6 +228,7 @@ export default {
         langCode: this.form.langCode,
         language: this.form.language,
         sort: this.form.sort,
+        enableTts: this.form.enableTts === 'global' ? null : this.form.enableTts,
         functions: this.currentFunctions.map(item => {
           return ({
             pluginId: item.id,
@@ -226,6 +236,11 @@ export default {
           })
         })
       };
+      
+      // 添加调试信息
+      console.log('保存配置 - 原始enableTts值:', this.form.enableTts, '类型:', typeof this.form.enableTts);
+      console.log('转换后的enableTts值:', configData.enableTts, '类型:', typeof configData.enableTts);
+      console.log('发送的完整数据:', JSON.stringify(configData, null, 2));
       Api.agent.updateAgentConfig(this.$route.query.agentId, configData, ({ data }) => {
         if (data.code === 0) {
           this.$message.success({
@@ -328,6 +343,7 @@ export default {
           this.form = {
             ...this.form,
             ...data.data,
+            enableTts: data.data.enableTts !== undefined ? (data.data.enableTts === null ? 'global' : data.data.enableTts) : 'global',
             model: {
               ttsModelId: data.data.ttsModelId,
               vadModelId: data.data.vadModelId,
@@ -872,5 +888,12 @@ export default {
   width: 32px;
   height: 32px;
   margin-left: 8px;
+}
+
+.config-hint {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+  line-height: 1.4;
 }
 </style>

@@ -69,6 +69,9 @@ public class AgentUpdateDTO implements Serializable {
     @Schema(description = "排序", example = "1", nullable = true)
     private Integer sort;
 
+    @Schema(description = "是否启用TTS语音合成（true启用，false禁用，null使用全局配置）", example = "true", nullable = true)
+    private Boolean enableTts;
+
     @Data
     @Schema(description = "插件函数信息")
     public static class FunctionInfo implements Serializable {

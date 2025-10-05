@@ -18,6 +18,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import xiaozhi.common.constant.Constant;
 import xiaozhi.common.exception.RenException;
 import xiaozhi.common.exception.ErrorCode;
@@ -49,6 +50,7 @@ import xiaozhi.modules.security.user.SecurityUser;
 import xiaozhi.modules.sys.enums.SuperAdminEnum;
 import xiaozhi.modules.timbre.service.TimbreService;
 
+@Slf4j
 @Service
 @AllArgsConstructor
 public class AgentServiceImpl extends BaseServiceImpl<AgentDao, AgentEntity> implements AgentService {
@@ -257,6 +259,12 @@ public class AgentServiceImpl extends BaseServiceImpl<AgentDao, AgentEntity> imp
         if (dto.getSort() != null) {
             existingEntity.setSort(dto.getSort());
         }
+        // 处理enableTts字段：由于前端总是会发送这个字段（包括null值表示使用全局配置）
+        // 所以我们直接更新，null值表示使用全局配置，true/false表示明确的开关状态
+        log.info("更新智能体TTS配置 - AgentId: {}, EnableTts: {}", agentId, dto.getEnableTts());
+        log.info("更新前enableTts值: {}, 更新后enableTts值: {}", existingEntity.getEnableTts(), dto.getEnableTts());
+        existingEntity.setEnableTts(dto.getEnableTts());
+        log.info("设置后的enableTts值: {}", existingEntity.getEnableTts());
 
         // 更新函数插件信息
         List<AgentUpdateDTO.FunctionInfo> functions = dto.getFunctions();
@@ -331,7 +339,24 @@ public class AgentServiceImpl extends BaseServiceImpl<AgentDao, AgentEntity> imp
         if (!b) {
             throw new RenException(ErrorCode.LLM_INTENT_PARAMS_MISMATCH);
         }
-        this.updateById(existingEntity);
+        
+        // 确保enableTts字段被包含在更新中
+        log.info("准备更新智能体 - enableTts字段值: {}", existingEntity.getEnableTts());
+        
+        // 使用混合策略：先更新普通字段，再单独处理enableTts
+        // 1. 使用updateById更新非null字段（安全）
+        boolean updateResult1 = this.updateById(existingEntity);
+        log.info("普通字段更新结果: {}", updateResult1);
+        
+        // 2. 单独更新enableTts字段（允许null值）
+        UpdateWrapper<AgentEntity> ttsUpdateWrapper = new UpdateWrapper<>();
+        ttsUpdateWrapper.eq("id", existingEntity.getId())
+                .set("enable_tts", existingEntity.getEnableTts());
+        boolean updateResult2 = this.update(null, ttsUpdateWrapper);
+        log.info("TTS字段更新结果: {}", updateResult2);
+        
+        boolean finalResult = updateResult1 && updateResult2;
+        log.info("智能体更新最终结果: {}", finalResult);
     }
 
     /**

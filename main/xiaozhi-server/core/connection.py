@@ -146,9 +146,9 @@ class ConnectionHandler:
         self.load_function_plugin = False
         self.intent_type = "nointent"
         
-        # TTS开关控制
+        # TTS开关控制 - 初始化为全局配置
         self.enable_tts = self.config.get("enable_tts", True)
-        self.logger.bind(tag=TAG).info(f"TTS开关状态: {self.enable_tts}")
+        self.logger.bind(tag=TAG).info(f"全局TTS开关状态: {self.enable_tts}")
         self.timeout_seconds = (
             int(self.config.get("close_connection_no_voice_time", 120)) + 60
         )  # 在原来第一道关闭的基础上加60秒，进行二道关闭
@@ -623,6 +623,15 @@ class ConnectionHandler:
             self.chat_history_conf = int(private_config["chat_history_conf"])
         if private_config.get("mcp_endpoint", None) is not None:
             self.config["mcp_endpoint"] = private_config["mcp_endpoint"]
+        # 处理单设备TTS开关配置
+        if private_config.get("enable_tts", None) is not None:
+            self.enable_tts = private_config["enable_tts"]
+            self._device_tts_override = True  # 标记为设备特定配置
+            self.logger.bind(tag=TAG).info(f"设备 {self.device_id} 使用单设备TTS配置: {self.enable_tts}")
+        else:
+            # 如果没有单设备配置，使用全局配置
+            self._device_tts_override = False
+            self.logger.bind(tag=TAG).info(f"设备 {self.device_id} 使用全局TTS配置: {self.enable_tts}")
         try:
             modules = initialize_modules(
                 self.logger,
@@ -989,6 +998,15 @@ class ConnectionHandler:
             self.logger.bind(tag=TAG).info(f"完成模拟TTS协议流程: {text}")
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"模拟TTS协议发送失败: {e}")
+    
+    def get_tts_status(self):
+        """获取当前设备的TTS状态信息"""
+        return {
+            "device_id": self.device_id,
+            "enable_tts": self.enable_tts,
+            "is_global_config": not hasattr(self, '_device_tts_override') or not self._device_tts_override,
+            "config_source": "device_specific" if hasattr(self, '_device_tts_override') and self._device_tts_override else "global"
+        }
 
     def _handle_function_result(self, result, function_call_data, depth):
         if result.action == Action.RESPONSE:  # 直接回复前端

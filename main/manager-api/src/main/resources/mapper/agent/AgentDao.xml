@@ -28,6 +28,7 @@
         <result column="langCode" property="langCode"/>
         <result column="language" property="language"/>
         <result column="sort" property="sort"/>
+        <result column="enableTts" property="enableTts"/>
         <result column="creator" property="creator"/>
         <result column="createdAt" property="createdAt"/>
         <result column="updater" property="updater"/>
@@ -66,6 +67,7 @@
                a.lang_code         AS langCode,
                a.language          AS language,
                a.sort,
+               a.enable_tts        AS enableTts,
                a.creator,
                a.created_at        AS createdAt,
                a.updater,
