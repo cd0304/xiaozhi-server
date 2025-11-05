@@ -120,12 +120,13 @@ def initialize_asr(config):
         if "type" not in config["ASR"][select_asr_module]
         else config["ASR"][select_asr_module]["type"]
     )
+    logger.bind(tag=TAG).info(f"正在初始化ASR - 模块: {select_asr_module}, 类型: {asr_type}")
     new_asr = asr.create_instance(
         asr_type,
         config["ASR"][select_asr_module],
         str(config.get("delete_audio", True)).lower() in ("true", "1", "yes"),
     )
-    logger.bind(tag=TAG).info("ASR模块初始化完成")
+    logger.bind(tag=TAG).info(f"ASR模块初始化完成 - 实例类型: {type(new_asr).__name__}, interface_type: {new_asr.interface_type}")
     return new_asr
 
 
