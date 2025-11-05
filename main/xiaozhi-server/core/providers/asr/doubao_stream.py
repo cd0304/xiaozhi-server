@@ -54,17 +54,27 @@ class ASRProvider(ASRProviderBase):
         await super().open_audio_channels(conn)
 
     async def receive_audio(self, conn, audio, audio_have_voice):
+        """流式ASR接收音频数据，重写基类方法以避免走非流式处理路径"""
+        logger.bind(tag=TAG).debug(f"[豆包流式ASR] 收到音频数据，长度: {len(audio) if audio else 0}, 有声音: {audio_have_voice}, client_voice_stop: {getattr(conn, 'client_voice_stop', False)}")
+        
+        # 流式ASR不需要处理client_voice_stop，因为识别结果在_forward_asr_results中实时返回
+        # 如果client_voice_stop为True，说明VAD检测到语音结束，但流式ASR已经在_forward_asr_results中处理了结果
+        if getattr(conn, 'client_voice_stop', False):
+            logger.bind(tag=TAG).debug("[豆包流式ASR] 检测到client_voice_stop=True，但流式ASR结果已在_forward_asr_results中处理，跳过基类处理")
+            conn.client_voice_stop = False  # 重置标志，避免基类处理
+        
         conn.asr_audio.append(audio)
         conn.asr_audio = conn.asr_audio[-10:]
         
         # 存储音频数据
         if not hasattr(conn, 'asr_audio_for_voiceprint'):
             conn.asr_audio_for_voiceprint = []
-        conn.asr_audio_for_voiceprint.append(audio)
+        if audio:  # 只存储非空音频
+            conn.asr_audio_for_voiceprint.append(audio)
         
-        # 当没有音频数据时处理完整语音片段
+        # 当没有音频数据时处理完整语音片段（流式ASR不需要调用handle_voice_stop，因为结果已经在_forward_asr_results中处理）
         if not audio and len(conn.asr_audio_for_voiceprint) > 0:
-            await self.handle_voice_stop(conn, conn.asr_audio_for_voiceprint)
+            logger.bind(tag=TAG).debug("[豆包流式ASR] 音频流结束，但流式ASR结果已在_forward_asr_results中处理，跳过handle_voice_stop")
             conn.asr_audio_for_voiceprint = []
 
         # 如果本次有声音，且之前没有建立连接
@@ -144,7 +154,7 @@ class ASRProvider(ASRProviderBase):
                 return
 
         # 发送当前音频数据
-        if self.asr_ws and self.is_processing:
+        if self.asr_ws and self.is_processing and audio:
             try:
                 pcm_frame = self.decoder.decode(audio, 960)
                 payload = gzip.compress(pcm_frame)
@@ -152,10 +162,13 @@ class ASRProvider(ASRProviderBase):
                 audio_request.extend(len(payload).to_bytes(4, "big"))
                 audio_request.extend(payload)
                 await self.asr_ws.send(audio_request)
+                logger.bind(tag=TAG).debug(f"已发送音频数据到豆包ASR服务，PCM帧大小: {len(pcm_frame)}")
             except Exception as e:
-                logger.bind(tag=TAG).info(f"发送音频数据时发生错误: {e}")
+                logger.bind(tag=TAG).error(f"发送音频数据时发生错误: {e}")
 
     async def _forward_asr_results(self, conn):
+        """接收并处理豆包ASR流式识别结果"""
+        logger.bind(tag=TAG).info("开始接收豆包ASR流式识别结果")
         try:
             while self.asr_ws and not conn.stop_event.is_set():
                 # 获取当前连接的音频数据
@@ -163,43 +176,54 @@ class ASRProvider(ASRProviderBase):
                 try:
                     response = await self.asr_ws.recv()
                     result = self.parse_response(response)
-                    logger.bind(tag=TAG).debug(f"收到ASR结果: {result}")
+                    logger.bind(tag=TAG).debug(f"收到豆包ASR响应: {json.dumps(result, ensure_ascii=False)}")
 
                     if "payload_msg" in result:
                         payload = result["payload_msg"]
                         # 检查是否是错误码1013（无有效语音）
                         if "code" in payload and payload["code"] == 1013:
-                            # 静默处理，不记录错误日志
+                            logger.bind(tag=TAG).debug("豆包ASR返回1013错误码（无有效语音），继续等待")
                             continue
 
                         if "result" in payload:
                             utterances = payload["result"].get("utterances", [])
+                            result_text = payload["result"].get("text", "")
+                            logger.bind(tag=TAG).debug(f"豆包ASR结果 - utterances数量: {len(utterances)}, result_text: {result_text}")
+                            
                             # 检查duration和空文本的情况
                             if (
                                 payload.get("audio_info", {}).get("duration", 0) > 2000
                                 and not utterances
-                                and not payload["result"].get("text")
+                                and not result_text
                             ):
-                                logger.bind(tag=TAG).error(f"识别文本：空")
+                                logger.bind(tag=TAG).warning(f"豆包ASR识别文本为空（duration > 2000ms）")
                                 self.text = ""
                                 conn.reset_vad_states()
-                                if len(audio_data) > 15:  # 确保有足够音频数据
-                                    await self.handle_voice_stop(conn, audio_data)
                                 break
 
+                            # 处理确定的识别结果
                             for utterance in utterances:
                                 if utterance.get("definite", False):
-                                    self.text = utterance["text"]
-                                    logger.bind(tag=TAG).info(
-                                        f"识别到文本: {self.text}"
-                                    )
-                                    conn.reset_vad_states()
-                                    if len(audio_data) > 15:  # 确保有足够音频数据
-                                        await self.handle_voice_stop(conn, audio_data)
-                                    break
+                                    recognized_text = utterance.get("text", "")
+                                    if recognized_text:
+                                        self.text = recognized_text
+                                        logger.bind(tag=TAG).info(
+                                            f"豆包ASR识别到确定文本: {self.text}"
+                                        )
+                                        
+                                        # 流式ASR直接调用startToChat，不需要调用handle_voice_stop
+                                        from core.handle.receiveAudioHandle import startToChat
+                                        await startToChat(conn, self.text)
+                                        
+                                        conn.reset_vad_states()
+                                        self.text = ""  # 清空文本，准备下次识别
+                                        break
+                            # 如果result中有text但不是definite，也记录日志
+                            if result_text and not any(u.get("definite", False) for u in utterances):
+                                logger.bind(tag=TAG).debug(f"豆包ASR中间结果（非确定）: {result_text}")
                         elif "error" in payload:
                             error_msg = payload.get("error", "未知错误")
-                            logger.bind(tag=TAG).error(f"ASR服务返回错误: {error_msg}")
+                            logger.bind(tag=TAG).error(f"豆包ASR服务返回错误: {error_msg}")
                             break
 
                 except websockets.ConnectionClosed:
@@ -353,6 +377,8 @@ class ASRProvider(ASRProviderBase):
             raise
 
     async def speech_to_text(self, opus_data, session_id, audio_format):
+        """流式ASR的speech_to_text方法，只返回已识别的文本"""
+        logger.bind(tag=TAG).warning(f"[豆包流式ASR] speech_to_text被调用（不应该被调用，流式ASR结果应在_forward_asr_results中处理），当前text: {self.text}")
         result = self.text
         self.text = ""  # 清空text
         return result, None
