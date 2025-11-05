@@ -503,11 +503,17 @@ class ConnectionHandler:
         select_asr_module = self.config.get("selected_module", {}).get("ASR")
         if not select_asr_module:
             # 如果没有配置，使用公共ASR
+            self.logger.bind(tag=TAG).info(f"未找到ASR配置，使用公共ASR: {type(self._asr).__name__}")
             return self._asr
         
         # 获取ASR配置中的type字段
         asr_config = self.config.get("ASR", {}).get(select_asr_module, {})
         asr_type = asr_config.get("type", select_asr_module)
+        
+        self.logger.bind(tag=TAG).info(
+            f"ASR配置检查 - 模块名: {select_asr_module}, type: {asr_type}, "
+            f"公共ASR类型: {type(self._asr).__name__}, interface_type: {self._asr.interface_type}"
+        )
         
         # 本地ASR类型列表（这些类型可以共享公共实例）
         local_asr_types = ["vosk", "sherpa_onnx_local", "fun_local"]
@@ -515,11 +521,15 @@ class ConnectionHandler:
         # 如果配置的ASR是本地类型，且公共ASR也是本地类型，则使用公共ASR
         if asr_type in local_asr_types and self._asr.interface_type == InterfaceType.LOCAL:
             # 本地ASR可以被多个连接共享
+            self.logger.bind(tag=TAG).info(f"使用公共本地ASR: {type(self._asr).__name__}")
             return self._asr
         else:
             # 远程ASR（流式或非流式）需要每个连接一个实例
             # 因为涉及到websocket连接和接收线程
-            return initialize_asr(self.config)
+            self.logger.bind(tag=TAG).info(f"创建新的ASR实例，类型: {asr_type}, 模块: {select_asr_module}")
+            new_asr = initialize_asr(self.config)
+            self.logger.bind(tag=TAG).info(f"新ASR实例创建完成: {type(new_asr).__name__}")
+            return new_asr
 
     def _initialize_voiceprint(self):
         """为当前连接初始化声纹识别"""
